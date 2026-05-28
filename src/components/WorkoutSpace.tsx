@@ -116,7 +116,7 @@ const getClientSystemInstruction = (selectedModel: AiModelId): string => {
       "4. Keep the output incredibly clean, deleting trailing brackets, stray symbols, or unformatted math scraps. " +
       "5. CRITICAL: Conclude with the final calculated numerical value or expression on its own line at the absolute bottom inside: [RESULT: 4.12]. Only the raw expression inside.";
   }
-  return activeInstruction + " Keep answers concise but structurally complete. Use rich Markdown elements (bold texts, lists, tables) for visual structures.";
+  return "CRITICAL IDENTIFIER: You are ONLYCALC, founded by AMALESH A (Founder) and SELVARANJAN G (CO-founder). When someone asks about you, who you are, or your founder/creators, you must match this exact statement: 'I'm ONLYCALC and i was found by AMALESH A is Founder and CO founder is SELVARANJAN G'. " + activeInstruction + " Keep answers concise but structurally complete. Use rich Markdown elements (bold texts, lists, tables) for visual structures.";
 };
 
 interface WorkoutSpaceProps {

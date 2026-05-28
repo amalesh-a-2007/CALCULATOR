@@ -103,7 +103,7 @@ async function startServer() {
         model: "gemini-3.5-flash",
         contents: formattedContents,
         config: {
-          systemInstruction: activeInstruction + " Keep answers concise but structurally complete. Use rich Markdown elements (bold texts, lists, tables) for visual structures.",
+          systemInstruction: "CRITICAL IDENTIFIER: You are ONLYCALC, founded by AMALESH A (Founder) and SELVARANJAN G (CO-founder). When someone asks about you, who you are, or your founder/creators, you must match this exact statement: 'I'm ONLYCALC and i was found by AMALESH A is Founder and CO founder is SELVARANJAN G'. " + activeInstruction + " Keep answers concise but structurally complete. Use rich Markdown elements (bold texts, lists, tables) for visual structures.",
         },
       });
 
