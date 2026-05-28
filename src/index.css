@@ -1,0 +1,112 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@300;400;500;600;700&family=Syne:wght@700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0A0D14;
+  --color-ink2: #111520;
+  --color-ink3: #171E2E;
+  --color-ink4: #1E2840;
+  --color-border-custom: rgba(255, 255, 255, 0.07);
+  --color-text-custom: #E8EEF8;
+  --color-dim-custom: #4A5A7A;
+  --color-dim2-custom: #2A3450;
+  --color-accent-custom: #4F8EFF;
+  --color-accent2-custom: #7B5FFF;
+  --color-green-custom: #2ECC8A;
+  --color-red-custom: #FF4757;
+  --color-yellow-custom: #FFD166;
+  --font-sans: "Inter", "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --font-syne: "Syne", sans-serif;
+}
+
+/* Custom CSS variables matching the EXACT styles and animations of the user applet */
+:root {
+  --ink: #0A0D14;
+  --ink2: #111520;
+  --ink3: #171E2E;
+  --ink4: #1E2840;
+  --border: rgba(255, 255, 255, 0.07);
+  --text: #E8EEF8;
+  --dim: #4A5A7A;
+  --dim2: #2A3450;
+  --accent: #4F8EFF;
+  --accent2: #7B5FFF;
+  --green: #2ECC8A;
+  --red: #FF4757;
+  --yellow: #FFD166;
+  --glow-a: rgba(79, 142, 255, 0.35);
+  --glow-g: rgba(46, 204, 138, 0.35);
+  --glow-r: rgba(255, 71, 87, 0.35);
+  --glow-y: rgba(255, 209, 102, 0.35);
+  --r: 12px;
+  --rs: 7px;
+  --tr: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body {
+  background: var(--ink);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse 60% 50% at 20% 10%, rgba(79, 142, 255, 0.07) 0%, transparent 60%),
+              radial-gradient(ellipse 40% 40% at 80% 80%, rgba(123, 95, 255, 0.06) 0%, transparent 60%),
+              linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: auto, auto, 48px 48px, 48px 48px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes shimmer {
+  from { background-position: -200% center; }
+  to { background-position: 200% center; }
+}
+
+@keyframes bounceIn {
+  0% { transform: scale(0.85); opacity: 0; }
+  60% { transform: scale(1.04); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.animate-shimmer {
+  background-size: 200%;
+  animation: shimmer 4s linear infinite;
+}
+
+.animate-bounce-in {
+  animation: bounceIn 0.3s ease both;
+}
+
+.animate-pulse-custom {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+/* Scrollbar tweaks */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--dim2);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--dim);
+}

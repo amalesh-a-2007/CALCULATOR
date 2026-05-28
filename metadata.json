@@ -1,0 +1,6 @@
+{
+  "name": "ONLY CALCULATOR",
+  "description": "An advanced, high-precision dark calculator featuring Standard, Scientific, and Accounting modes, a customizable Formula Bank, comprehensive statistics tools, and a built-in step-by-step math solver Co-Pilot powered by Gemini.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
