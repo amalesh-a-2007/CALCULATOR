@@ -26,9 +26,11 @@ async function startServer() {
         return;
       }
 
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = process.env.CALC_API_KEY || process.env.GEMINI_API_KEY;
       if (!apiKey) {
-        res.status(500).json({ error: "GEMINI_API_KEY environment variable is not configured." });
+        res.status(500).json({ 
+          error: "API Key is not configured. Please add either 'CALC_API_KEY' or 'GEMINI_API_KEY' in the Secrets panel (the Settings gear icon at the top right of the screen)." 
+        });
         return;
       }
 
