@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
-import { X, Sparkles, Send } from "lucide-react";
+import { X, Sparkles, Send, Key } from "lucide-react";
+import { GoogleGenAI } from "@google/genai";
 import { Message, Formula } from "../types";
 
 // Translation helper to display mathematical symbols nicely in the UI
@@ -71,6 +72,53 @@ const AI_MODELS: AiModelConfig[] = [
   { id: "perplexity", name: "ULTRAMAX", sub: "Grounded Facts", color: "text-[#06B6D4]", border: "border-[#06B6D4]/30", bg: "bg-[#06B6D4]/10", marker: "🔍" }
 ];
 
+const getClientSystemInstruction = (selectedModel: AiModelId): string => {
+  let activeInstruction = "";
+  if (selectedModel === "claude") {
+    activeInstruction = 
+      "You are Anthropic's Claude 3.5 (Precision Scholar) solver, integrated within the calculator ONLY CALCULATOR. " +
+      "Your personality is deeply rigorous, scholarly, and exceptionally thorough. " +
+      "When solving mathematical, proof-based, or science queries: " +
+      "1. Provide rigorous proofs, symbolic derivations, and logical step-by-step breakdowns. " +
+      "2. Format equations using clean, standard math syntax. Avoid raw backslashes or complex LaTeX macros. Use simple, easily readable notation. " +
+      "3. Break down mathematical problems from first principles to help the user learn. " +
+      "4. Keep formatting clean, avoiding raw asterisks, trailing bracket clutter, or weird LaTeX leftovers. " +
+      "5. CRITICAL: Conclude with the final calculated numerical value or calculator expression on its own line at the absolute bottom inside a brackets format: [RESULT: 15.25]. Only raw expression inside.";
+  } else if (selectedModel === "gpt") {
+    activeInstruction = 
+      "You are OpenAI's ChatGPT 4o (Business & Accounts Specialist), integrated within the calculator ONLY CALCULATOR. " +
+      "Your personality is commercial, ledger-focused, and highly quantitative. " +
+      "When solving business, financial, statistical, or accounting queries: " +
+      "1. Specialize in compound interest schedules, amortization formulas, depreciation schedules, margins, markups, tax math, and double-entry book balancing. " +
+      "2. Format financial schedules using compact, beautiful markdown tables. " +
+      "3. Present calculations clearly (e.g. Net Present Value, Future Value, EBITDA, Gross Profit Margin, Standard Deviation). " +
+      "4. Clean your text lines of unnecessary symbol clutter. " +
+      "5. CRITICAL: Conclude with the final calculated numerical value or formula on its own line at the absolute bottom inside: [RESULT: 1250.50]. Only the raw value inside.";
+  } else if (selectedModel === "perplexity") {
+    activeInstruction = 
+      "You are Perplexity (Fact-Grounded Math Engine), integrated within the calculator ONLY CALCULATOR. " +
+      "Your personality is concise, factual, grounded, and prompt. " +
+      "When handling conversions, physical constants, geographic arithmetic, or general knowledge: " +
+      "1. Give direct answers with standard facts, constant measurements (e.g., speed of light in vacuum = 299792458 m/s, Earth gravity = 9.80665 m/s²), and verified conversion constants. " +
+      "2. Show calculation steps clearly without introductory filler or conversational fluff. " +
+      "3. Map values across common systems of units (metrics vs. imperial) side-by-side using tabular presentation. " +
+      "4. Avoid unnecessary decorative markdown symbols. " +
+      "5. CRITICAL: Conclude with the final calculated numerical value or expression on its own line at the absolute bottom inside: [RESULT: 2.54]. Only the raw expression inside.";
+  } else {
+    // defaults to 'gemini'
+    activeInstruction = 
+      "You are Google's Gemini 2.0 (Analytical Visionary) solver, integrated within the calculator ONLY CALCULATOR. " +
+      "Your personality is supportive, analytical, highly technical, and deeply accurate. " +
+      "When solving advanced scientific, physics, calculus, or algebraic queries: " +
+      "1. Focus deeply on precision. Show calculations clearly. " +
+      "2. Provide step-by-step breakdowns for calculus, algebraic systems, and matrices. " +
+      "3. State key formulas prominently. " +
+      "4. Keep the output incredibly clean, deleting trailing brackets, stray symbols, or unformatted math scraps. " +
+      "5. CRITICAL: Conclude with the final calculated numerical value or expression on its own line at the absolute bottom inside: [RESULT: 4.12]. Only the raw expression inside.";
+  }
+  return activeInstruction + " Keep answers concise but structurally complete. Use rich Markdown elements (bold texts, lists, tables) for visual structures.";
+};
+
 interface WorkoutSpaceProps {
   isOpen: boolean;
   onClose: () => void;
@@ -91,6 +139,8 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [activeModel, setActiveModel] = useState<AiModelId>("gemini");
+  const [localApiKey, setLocalApiKey] = useState(() => localStorage.getItem("ONLYCALC_API_KEY") || "");
+  const [showKeyConfig, setShowKeyConfig] = useState(false);
   
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
@@ -119,6 +169,9 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
     setChatInput("");
     setIsAiLoading(true);
 
+    let serverSuccess = false;
+
+    // 1. Try server-side first
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -128,16 +181,62 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
         body: JSON.stringify({ messages: updatedMsgs, modelId: activeModel }),
       });
 
-      const data = await response.json();
-      if (response.ok && data.reply) {
-        setChatMessages((prev) => [...prev, { role: "bot", content: data.reply }]);
-      } else {
-        const errText = data.error || "Failed to establish complete processing.";
-        setChatMessages((prev) => [...prev, { role: "bot", content: `System warning: ${errText}` }]);
+      // Checking content-type ensures we do not treat Netlify's full static HTML 404/fallback page as standard JSON
+      const contentType = response.headers.get("content-type");
+      if (response.ok && contentType && contentType.includes("application/json")) {
+        const data = await response.json();
+        if (data.reply) {
+          setChatMessages((prev) => [...prev, { role: "bot", content: data.reply }]);
+          serverSuccess = true;
+        }
       }
+    } catch (err) {
+      console.warn("Express server endpoint is offline, checking for client-side API Key fallback...");
+    }
+
+    if (serverSuccess) {
+      setIsAiLoading(false);
+      return;
+    }
+
+    // 2. Client-side fallback (ideal for Netlify static host)
+    try {
+      const resolvedKey = localApiKey || (import.meta as any).env?.VITE_CALC_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+      if (!resolvedKey) {
+        throw new Error("No client-side API key configure.");
+      }
+
+      const ai = new GoogleGenAI({
+        apiKey: resolvedKey,
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build",
+          },
+        },
+      });
+
+      const formattedContents = updatedMsgs.map((m) => {
+        const role = m.role === "user" ? "user" : "model";
+        return {
+          role,
+          parts: [{ text: m.content || "" }],
+        };
+      });
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: formattedContents,
+        config: {
+          systemInstruction: getClientSystemInstruction(activeModel),
+        },
+      });
+
+      const reply = response.text || "Sorry, I was unable to generate a response from the direct client-side Gemini solver.";
+      setChatMessages((prev) => [...prev, { role: "bot", content: reply }]);
     } catch (err: any) {
-      console.error(err);
-      // Fallback local eval for simple arithmetic if network fails
+      console.error("Client fallback error:", err);
+      
+      // Local simple solver if everything else fails
       let localSolution = "";
       try {
         const cleaned = text
@@ -155,8 +254,16 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
         }
       } catch {}
 
-      const msgContent = localSolution || "I encountered an issue connecting to the solver service. Please verify your Gemini API key is configured properly in Secrets.";
-      setChatMessages((prev) => [...prev, { role: "bot", content: msgContent }]);
+      if (localSolution) {
+        setChatMessages((prev) => [...prev, { role: "bot", content: localSolution }]);
+      } else {
+        const msgContent = 
+          "I encountered an issue connecting to the solver service. Since this app is running in client-side mode (perfect for Netlify!), please configure your Gemini API Key manually:\n\n" +
+          "1. Click the **Key icon (🔑)** next to the title in the top-right of this panel.\n" +
+          "2. Paste your **Gemini API Key** from Google AI Studio.\n\n" +
+          "This key is completely secure and will be saved in your private local browser storage only!";
+        setChatMessages((prev) => [...prev, { role: "bot", content: msgContent }]);
+      }
     } finally {
       setIsAiLoading(false);
     }
@@ -418,13 +525,27 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
               ACTIVE CO-PILOT LAYER
             </span>
           </div>
-          <button 
-            onClick={onClose}
-            className="p-1 px-2 hover:bg-white/5 rounded-lg text-dim-custom hover:text-white transition-all cursor-pointer font-mono text-xs scale-90"
-            title="Dismiss Solver"
-          >
-            <X size={14} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowKeyConfig(!showKeyConfig)}
+              className={`p-1.5 px-2 rounded-lg border transition-all cursor-pointer text-xs flex items-center gap-1 ${
+                showKeyConfig || localApiKey || (import.meta as any).env?.VITE_CALC_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY
+                  ? "border-[#D97706]/35 text-[#D97706] bg-[#D97706]/5 hover:bg-[#D97706]/10"
+                  : "border-transparent text-dim-custom hover:text-white"
+              }`}
+              title="Configure API Key (For Netlify & static client)"
+            >
+              <Key size={12} />
+              <span className="text-[9px] font-mono leading-none max-sm:hidden font-bold">KEY</span>
+            </button>
+            <button 
+              onClick={onClose}
+              className="p-1 px-2 hover:bg-white/5 rounded-lg text-dim-custom hover:text-white transition-all cursor-pointer font-mono text-xs scale-90"
+              title="Dismiss Solver"
+            >
+              <X size={14} />
+            </button>
+          </div>
         </div>
 
         {/* FAMOUS COGNITIVE MODELS SWAPBAR */}
@@ -454,6 +575,69 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
             );
           })}
         </div>
+
+        {/* LOCAL KEY CONFIGURATION SLIDE-OUT / COLLAPSIBLE */}
+        {showKeyConfig && (
+          <div className="bg-ink3 border-b border-white/10 p-4 space-y-2.5 animate-fade-in">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono text-[#D97706] font-bold uppercase tracking-wider flex items-center gap-1">
+                <Key size={10} /> Local App API Key Setup
+              </span>
+              <span className="text-[8.5px] font-sans text-dim-custom">
+                *Stored locally in your browser
+              </span>
+            </div>
+            <p className="text-[10px] text-dim-custom leading-relaxed font-sans">
+              Deploying on a static platform like <strong>Netlify</strong>? Dynamic API routes are offline. Enter your Gemini API key below to run calculations directly in your browser.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                className="flex-grow bg-ink2 border border-white/10 focus:border-[#D97706]/50 text-white font-mono text-[10.5px] px-2.5 py-1 rounded-lg focus:outline-none transition-all placeholder-dim-custom"
+                placeholder="Paste Gemini/Calc API Key (AIzaSy...)"
+                value={localApiKey}
+                onChange={(e) => {
+                  const val = e.target.value.trim();
+                  setLocalApiKey(val);
+                  if (val) {
+                    localStorage.setItem("ONLYCALC_API_KEY", val);
+                  } else {
+                    localStorage.removeItem("ONLYCALC_API_KEY");
+                  }
+                }}
+              />
+              {localApiKey && (
+                <button
+                  onClick={() => {
+                    setLocalApiKey("");
+                    localStorage.removeItem("ONLYCALC_API_KEY");
+                    setToastMessage("Local API Key cleared!");
+                  }}
+                  className="px-2 py-1 rounded-lg border border-red-500/30 hover:border-red-500/60 text-red-500 text-[9.5px] font-mono transition-all cursor-pointer hover:bg-red-500/5 col-span-1"
+                >
+                  CLEAR
+                </button>
+              )}
+            </div>
+            {((import.meta as any).env?.VITE_CALC_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY) && (
+              <div className="text-[9.5px] text-[#10B981] font-mono flex items-center gap-1 bg-[#10B981]/5 border border-[#10B981]/15 p-1 px-2 rounded-lg">
+                <span className="w-1.1 h-1.1 rounded-full bg-[#10B981]" />
+                Detected API key preset via static Environment Variables!
+              </div>
+            )}
+            <div className="text-[8.5px] text-dim-custom leading-relaxed border-t border-white/5 pt-1.5 flex justify-between">
+              <span>Need a key? Acquire one at:</span>
+              <a 
+                href="https://aistudio.google.com/" 
+                target="_blank" 
+                rel="noreferrer" 
+                className="text-[#D97706] hover:underline font-mono"
+              >
+                aistudio.google.com
+              </a>
+            </div>
+          </div>
+        )}
 
         {/* CHAT FLOW CONTAINER */}
         <div className="flex-grow flex flex-col overflow-hidden relative">
