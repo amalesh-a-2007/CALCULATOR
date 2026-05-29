@@ -44,6 +44,71 @@ const displayFormatter = (expr: string): string => {
     .replace(/\//g, "÷");
 };
 
+const evaluateSafe = (expression: string): number => {
+  if (!expression) return 0;
+
+  // Clean trailing operators like +, -, *, /, %, **, ^
+  let cleaned = expression.trim();
+  while (cleaned.length > 0 && /[\+\-\*\/%\|\^\s]$/.test(cleaned)) {
+    cleaned = cleaned.trim();
+    if (/[\+\-\*\/%\|\^]$/.test(cleaned)) {
+      cleaned = cleaned.substring(0, cleaned.length - 1);
+    } else {
+      break;
+    }
+  }
+
+  // Also strip any hanging operators if double or nested (e.g. "5+3+  " -> "5+3")
+  cleaned = cleaned.trim();
+  while (cleaned.length > 0 && /[\+\-\*\/%\|\^]$/.test(cleaned)) {
+    cleaned = cleaned.substring(0, cleaned.length - 1).trim();
+  }
+
+  if (!cleaned) return 0;
+
+  // Implied multiplication formats:
+  // digit( -> digit*(
+  cleaned = cleaned.replace(/(\d)\(/g, "$1*(");
+  // )digit -> )*digit
+  cleaned = cleaned.replace(/\)(\d)/g, ")*$1");
+  // )( -> )*(
+  cleaned = cleaned.replace(/\)\(/g, ")*(");
+  // digit pi -> digit*pi
+  cleaned = cleaned.replace(/(\d)(Math\.PI|pi\b|π)/gi, "$1*$2");
+
+  // Expose Math variables to the local scope of eval
+  const {
+    sin, cos, tan, asin, acos, atan,
+    sinh, cosh, tanh, asinh, acosh, atanh,
+    sqrt, cbrt, log, log10, log2, exp, abs,
+    round, floor, ceil, trunc, sign, hypot, fround,
+    PI, E
+  } = Math;
+
+  const pi = Math.PI;
+  const e = Math.E;
+  const ln = Math.log;
+
+  // Balance parentheses
+  let openParentheses = (cleaned.match(/\(/g) || []).length;
+  let closeParentheses = (cleaned.match(/\)/g) || []).length;
+  while (openParentheses > closeParentheses) {
+    cleaned += ")";
+    closeParentheses++;
+  }
+
+  const result = eval(cleaned);
+  
+  if (typeof result !== "number" || isNaN(result)) {
+    const num = Number(result);
+    if (isNaN(num)) {
+      throw new Error("Invalid output");
+    }
+    return num;
+  }
+  return result;
+};
+
 export default function App() {
   // ── CORE STATES ──
   const [expr, setExpr] = useState<string>("");
@@ -91,7 +156,7 @@ export default function App() {
     }
     try {
       // Evaluate expression on changes to update display expression preview
-      const resultValue = eval(expr);
+      const resultValue = evaluateSafe(expr);
       if (Number.isFinite(resultValue) && String(resultValue) !== displayFormatter(expr)) {
         // Display subtle live preview of evaluated results next to input lines
         setTypedInput("= " + (+resultValue.toFixed(10)));
@@ -170,7 +235,7 @@ export default function App() {
   const handleEvaluate = () => {
     if (!expr) return;
     try {
-      const evaluationResult = eval(expr);
+      const evaluationResult = evaluateSafe(expr);
       const roundedResult = Number.isFinite(evaluationResult) 
         ? +(evaluationResult.toFixed(10)) 
         : evaluationResult;
@@ -188,6 +253,7 @@ export default function App() {
 
       // Save evaluated result for subsequent operational chaining
       setExpr(String(roundedResult));
+      setIsError(false);
     } catch {
       setIsError(true);
       setMainResult("SYNTAX ERROR");
@@ -198,7 +264,7 @@ export default function App() {
   // ── MEMORY FUNCTIONS ──
   const handleMemoryStore = () => {
     try {
-      const val = eval(expr) || 0;
+      const val = evaluateSafe(expr) || 0;
       setMemory(Number(val));
     } catch {
       setMemory(0);
@@ -207,6 +273,7 @@ export default function App() {
 
   const handleMemoryRecall = () => {
     if (memory !== null) {
+      setIsError(false);
       setExpr((prev) => prev + String(memory));
     }
   };
@@ -217,14 +284,14 @@ export default function App() {
 
   const handleMemoryAdd = () => {
     try {
-      const currentVal = eval(expr) || 0;
+      const currentVal = evaluateSafe(expr) || 0;
       setMemory((prev) => (prev ?? 0) + Number(currentVal));
     } catch {}
   };
 
   const handleMemorySubtract = () => {
     try {
-      const currentVal = eval(expr) || 0;
+      const currentVal = evaluateSafe(expr) || 0;
       setMemory((prev) => (prev ?? 0) - Number(currentVal));
     } catch {}
   };
@@ -341,6 +408,7 @@ export default function App() {
     // Trigger expression load if possible
     const numericPart = out.split(": ")[1];
     if (numericPart && !isNaN(parseFloat(numericPart))) {
+      setIsError(false);
       setExpr(numericPart);
     }
   };
@@ -349,9 +417,10 @@ export default function App() {
   const handleApplyGst = (rate: number) => {
     if (!expr) return;
     try {
-      const val = eval(expr);
+      const val = evaluateSafe(expr);
       const computedGst = val * (rate / 100);
       setExpr(String(+computedGst.toFixed(4)));
+      setIsError(false);
     } catch {
       setIsError(true);
       setMainResult("SYNTAX ERROR");
@@ -364,7 +433,7 @@ export default function App() {
     if (isNaN(inputVal)) return;
 
     try {
-      const currentVal = eval(expr || "0");
+      const currentVal = evaluateSafe(expr || "0");
       let resultVal = "";
 
       switch (accountingAction) {
@@ -388,6 +457,7 @@ export default function App() {
       }
 
       setExpr(resultVal);
+      setIsError(false);
     } catch {
       setIsError(true);
       setMainResult("SYNTAX ERROR");
@@ -399,6 +469,7 @@ export default function App() {
 
   // Helper parser for custom input string bindings
   const handleManualInputString = (v: string) => {
+    setIsError(false); // Reset error state immediately on continuous manual typing!
     let clean = v
       .replace(/sin\(/g, "Math.sin(")
       .replace(/cos\(/g, "Math.cos(")
@@ -925,6 +996,7 @@ export default function App() {
                   key={hIdx}
                   className="p-2 py-2.5 rounded-lg border border-transparent hover:bg-ink3 hover:border-border-custom transition-all cursor-pointer text-right group select-none"
                   onClick={() => {
+                    setIsError(false);
                     setExpr(String(h.r));
                   }}
                 >
@@ -1008,6 +1080,7 @@ export default function App() {
         customFormulas={formulas}
         currExpr={expr}
         onInsertIntoCalculator={(val) => {
+          setIsError(false);
           setExpr(val);
         }}
       />

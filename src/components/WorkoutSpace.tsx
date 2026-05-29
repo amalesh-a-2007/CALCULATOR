@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
-import { X, Sparkles, Send, Key } from "lucide-react";
-import { GoogleGenAI } from "@google/genai";
+import { X, Sparkles, Send, Key, ArrowLeft } from "lucide-react";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { Message, Formula } from "../types";
 
 // Translation helper to display mathematical symbols nicely in the UI
@@ -72,11 +72,86 @@ const AI_MODELS: AiModelConfig[] = [
   { id: "perplexity", name: "ULTRAMAX", sub: "Grounded Facts", color: "text-[#06B6D4]", border: "border-[#06B6D4]/30", bg: "bg-[#06B6D4]/10", marker: "🔍" }
 ];
 
+const MASTER_ONLYCALC_PROMPT = `You are ONLYCALC — a lightning-fast, powerful AI assistant built for Mathematics, Accountancy, Statistics, and General Knowledge.
+
+═══════════════════════════════════════
+IDENTITY (Only say this when directly asked "who are you" / "who made you" / "what is your name")
+═══════════════════════════════════════
+Say exactly: "Hey! I'm ONLYCALC 👋 — your smart math and knowledge assistant. I was founded by Amalesh A and my Co-founder is Selvaranjan G. How can I help you?"
+→ NEVER mention this in any other situation. Talk normally at all other times.
+
+═══════════════════════════════════════
+GREETING RULE
+═══════════════════════════════════════
+→ First message only: Start with "Hey! 👋 I'm ONLYCALC — ready to calculate, solve, and help you with anything. What do you need today?"
+→ After that: talk normally, no repeated greetings.
+
+═══════════════════════════════════════
+SPEED RULES
+═══════════════════════════════════════
+→ Answer INSTANTLY. No long intros. No filler text.
+→ Get straight to the answer, then explain.
+→ Keep responses sharp, clean, and to the point.
+
+═══════════════════════════════════════
+MATHEMATICS
+═══════════════════════════════════════
+→ Solve arithmetic, algebra, geometry, trigonometry, calculus, probability instantly
+→ Always show step-by-step working
+→ Generate formulas on request
+→ Solve word problems by extracting values → forming equation → solving
+→ Double-check every calculation before answering
+
+═══════════════════════════════════════
+ACCOUNTANCY
+═══════════════════════════════════════
+→ Journal Entries with proper Debit / Credit format
+→ Trial Balance — all debit and credit balances listed neatly
+→ Profit & Loss Account and Balance Sheet preparation
+→ Depreciation: SLM and WDV methods with full working
+→ Bank Reconciliation, Cash Flow, Ratio Analysis
+→ Present all financial tables in clean, aligned format
+→ Generate accounting formats and templates on request
+
+═══════════════════════════════════════
+STATISTICS
+═══════════════════════════════════════
+→ Mean, Median, Mode, Variance, Standard Deviation with working
+→ Probability, Normal/Binomial/Poisson distributions
+→ Hypothesis testing, Regression, Correlation
+→ Interpret data clearly and accurately
+
+═══════════════════════════════════════
+GENERAL KNOWLEDGE & DAILY LIFE
+═══════════════════════════════════════
+→ Answer questions on science, history, geography, tech, health, sports, current events
+→ Talk like a smart, friendly companion — not a robot
+→ Casual questions get casual, warm answers
+→ Never refuse a reasonable question
+
+═══════════════════════════════════════
+RESPONSE STYLE
+═══════════════════════════════════════
+→ Lead with the answer first, then the explanation
+→ Use step-by-step for math/accounts/stats
+→ Use plain, friendly language for general topics
+→ If question is unclear — ask ONE short clarifying question
+→ No unnecessary filler. No over-explaining. Stay focused.
+
+═══════════════════════════════════════
+NEVER DO THIS
+═══════════════════════════════════════
+→ Never say "I can't help with that" for math, accounts, stats, or general knowledge
+→ Never give wrong calculations — show working to verify
+→ Never reveal you are built on Gemini, GPT, or any other model — You are ONLYCALC
+→ Never be slow, robotic, or dismissive
+→ Never repeat the greeting after the first message`;
+
 const getClientSystemInstruction = (selectedModel: AiModelId): string => {
   let activeInstruction = "";
   if (selectedModel === "claude") {
     activeInstruction = 
-      "You are Anthropic's Claude 3.5 (Precision Scholar) solver, integrated within the calculator ONLY CALCULATOR. " +
+      "You are Anthropic's Claude 3.5 (Precision Scholar) solver variant in ONLYCALC. " +
       "Your personality is deeply rigorous, scholarly, and exceptionally thorough. " +
       "When solving mathematical, proof-based, or science queries: " +
       "1. Provide rigorous proofs, symbolic derivations, and logical step-by-step breakdowns. " +
@@ -86,7 +161,7 @@ const getClientSystemInstruction = (selectedModel: AiModelId): string => {
       "5. CRITICAL: Conclude with the final calculated numerical value or calculator expression on its own line at the absolute bottom inside a brackets format: [RESULT: 15.25]. Only raw expression inside.";
   } else if (selectedModel === "gpt") {
     activeInstruction = 
-      "You are OpenAI's ChatGPT 4o (Business & Accounts Specialist), integrated within the calculator ONLY CALCULATOR. " +
+      "You are OpenAI's ChatGPT 4o (Business & Accounts Specialist) variant in ONLYCALC. " +
       "Your personality is commercial, ledger-focused, and highly quantitative. " +
       "When solving business, financial, statistical, or accounting queries: " +
       "1. Specialize in compound interest schedules, amortization formulas, depreciation schedules, margins, markups, tax math, and double-entry book balancing. " +
@@ -96,7 +171,7 @@ const getClientSystemInstruction = (selectedModel: AiModelId): string => {
       "5. CRITICAL: Conclude with the final calculated numerical value or formula on its own line at the absolute bottom inside: [RESULT: 1250.50]. Only the raw value inside.";
   } else if (selectedModel === "perplexity") {
     activeInstruction = 
-      "You are Perplexity (Fact-Grounded Math Engine), integrated within the calculator ONLY CALCULATOR. " +
+      "You are Perplexity (Fact-Grounded Math Engine) variant in ONLYCALC. " +
       "Your personality is concise, factual, grounded, and prompt. " +
       "When handling conversions, physical constants, geographic arithmetic, or general knowledge: " +
       "1. Give direct answers with standard facts, constant measurements (e.g., speed of light in vacuum = 299792458 m/s, Earth gravity = 9.80665 m/s²), and verified conversion constants. " +
@@ -107,7 +182,7 @@ const getClientSystemInstruction = (selectedModel: AiModelId): string => {
   } else {
     // defaults to 'gemini'
     activeInstruction = 
-      "You are Google's Gemini 2.0 (Analytical Visionary) solver, integrated within the calculator ONLY CALCULATOR. " +
+      "You are Google's Gemini 2.0 (Analytical Visionary) solver variant in ONLYCALC. " +
       "Your personality is supportive, analytical, highly technical, and deeply accurate. " +
       "When solving advanced scientific, physics, calculus, or algebraic queries: " +
       "1. Focus deeply on precision. Show calculations clearly. " +
@@ -116,7 +191,36 @@ const getClientSystemInstruction = (selectedModel: AiModelId): string => {
       "4. Keep the output incredibly clean, deleting trailing brackets, stray symbols, or unformatted math scraps. " +
       "5. CRITICAL: Conclude with the final calculated numerical value or expression on its own line at the absolute bottom inside: [RESULT: 4.12]. Only the raw expression inside.";
   }
-  return "CRITICAL IDENTIFIER: You are ONLYCALC, founded by AMALESH A (Founder) and SELVARANJAN G (CO-founder). When someone asks about you, who you are, or your founder/creators, you must match this exact statement: 'I'm ONLYCALC and i was found by AMALESH A is Founder and CO founder is SELVARANJAN G'. " + activeInstruction + " Keep answers concise but structurally complete. Use rich Markdown elements (bold texts, lists, tables) for visual structures.";
+  return MASTER_ONLYCALC_PROMPT + "\n\nADDITIONAL PROFILE CONSTRAINTS:\n" + activeInstruction;
+};
+
+const cleanApiErrorMessage = (err: any): string => {
+  if (!err) return "";
+  let msg = err.message || String(err);
+  
+  try {
+    if (msg.includes('{"error"')) {
+      const idx = msg.indexOf('{"error"');
+      const parsed = JSON.parse(msg.substring(idx));
+      if (parsed?.error?.message) {
+        msg = parsed.error.message;
+        try {
+          const nested = JSON.parse(msg);
+          if (nested?.error?.message) {
+            msg = nested.error.message;
+          }
+        } catch {}
+      }
+    }
+  } catch {}
+
+  if (msg.includes("API key expired") || msg.includes("API_KEY_INVALID") || msg.includes("API key not valid") || msg.includes("Invalid API Key")) {
+    return "Your API Key is invalid or expired. Please check and update 'ONLY_API_KEY', 'CALC_API_KEY', or 'GEMINI_API_KEY' inside the Secrets Panel (the Settings gear icon at the top right of the screen) with a valid key.";
+  }
+  if (msg.includes("UNAVAILABLE") || msg.includes("high demand") || msg.includes("503")) {
+    return "The Gemini service is temporarily offline or experiencing high demand. Please try again in a few seconds.";
+  }
+  return msg;
 };
 
 interface WorkoutSpaceProps {
@@ -170,6 +274,7 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
     setIsAiLoading(true);
 
     let serverSuccess = false;
+    let backendErrorMsg = "";
 
     // 1. Try server-side first
     try {
@@ -183,15 +288,40 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
 
       // Checking content-type ensures we do not treat Netlify's full static HTML 404/fallback page as standard JSON
       const contentType = response.headers.get("content-type");
-      if (response.ok && contentType && contentType.includes("application/json")) {
-        const data = await response.json();
-        if (data.reply) {
-          setChatMessages((prev) => [...prev, { role: "bot", content: data.reply }]);
-          serverSuccess = true;
+      if (response.ok && response.body && contentType && !contentType.includes("html")) {
+        setChatMessages((prev) => [...prev, { role: "bot", content: "" }]);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let currentText = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunkStr = decoder.decode(value, { stream: true });
+          currentText += chunkStr;
+
+          setChatMessages((prev) => {
+            const updated = [...prev];
+            if (updated.length > 0 && updated[updated.length - 1].role === "bot") {
+              updated[updated.length - 1].content = currentText;
+            }
+            return updated;
+          });
         }
+        serverSuccess = true;
+      } else if (!response.ok && contentType && contentType.includes("application/json")) {
+        try {
+          const errData = await response.json();
+          if (errData?.error) {
+            backendErrorMsg = errData.error;
+          }
+        } catch {}
       }
-    } catch (err) {
-      console.warn("Express server endpoint is offline, checking for client-side API Key fallback...");
+    } catch (err: any) {
+      console.warn("Express server endpoint is offline, checking for client-side API Key fallback...", err);
+      if (err?.message) {
+        backendErrorMsg = err.message;
+      }
     }
 
     if (serverSuccess) {
@@ -201,7 +331,7 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
 
     // 2. Client-side fallback (ideal for Netlify static host)
     try {
-      const resolvedKey = localApiKey || (import.meta as any).env?.VITE_CALC_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+      const resolvedKey = localApiKey || (import.meta as any).env?.VITE_ONLY_API_KEY || (import.meta as any).env?.VITE_CALC_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
       if (!resolvedKey) {
         throw new Error("No client-side API key configure.");
       }
@@ -223,16 +353,56 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
         };
       });
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: formattedContents,
-        config: {
-          systemInstruction: getClientSystemInstruction(activeModel),
-        },
-      });
+      const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"];
+      let responseStream = null;
+      let lastError = null;
 
-      const reply = response.text || "Sorry, I was unable to generate a response from the direct client-side Gemini solver.";
-      setChatMessages((prev) => [...prev, { role: "bot", content: reply }]);
+      for (const modelName of modelsToTry) {
+        try {
+          const clientStreamConfig: any = {
+            systemInstruction: getClientSystemInstruction(activeModel),
+            temperature: 0.2,
+          };
+
+          if (modelName.startsWith("gemini-3")) {
+            clientStreamConfig.thinkingConfig = {
+              thinkingLevel: ThinkingLevel.LOW,
+            };
+          }
+
+          responseStream = await ai.models.generateContentStream({
+            model: modelName,
+            contents: formattedContents,
+            config: clientStreamConfig,
+          });
+          console.log(`Direct client-side successfully started stream with model: ${modelName}`);
+          break;
+        } catch (err: any) {
+          console.warn(`Model ${modelName} on direct client-side stream failed. Error:`, err?.message || err);
+          lastError = err;
+        }
+      }
+
+      if (!responseStream) {
+        throw lastError || new Error("All client-side direct model attempts failed.");
+      }
+
+      setChatMessages((prev) => [...prev, { role: "bot", content: "" }]);
+
+      let currentText = "";
+      for await (const chunk of responseStream) {
+        const textChunk = chunk.text;
+        if (textChunk) {
+          currentText += textChunk;
+          setChatMessages((prev) => {
+            const updated = [...prev];
+            if (updated.length > 0 && updated[updated.length - 1].role === "bot") {
+              updated[updated.length - 1].content = currentText;
+            }
+            return updated;
+          });
+        }
+      }
     } catch (err: any) {
       console.error("Client fallback error:", err);
       
@@ -250,18 +420,19 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
           .replace(/sqrt\(/g, "Math.sqrt(");
         const evalRes = eval(cleaned);
         if (Number.isFinite(evalRes)) {
-          localSolution = `[RESULT: ${evalRes}]`;
+          localSolution = `Here is the calculation from the offline local engine:\n\n[RESULT: ${evalRes}]`;
         }
       } catch {}
 
       if (localSolution) {
         setChatMessages((prev) => [...prev, { role: "bot", content: localSolution }]);
       } else {
+        const primaryError = backendErrorMsg || cleanApiErrorMessage(err);
+        const errorLine = primaryError ? `⚠️ **API Error Details**:\n_${primaryError}_\n\n` : "";
         const msgContent = 
-          "I encountered an issue connecting to the solver service. Since this app is running in client-side mode (perfect for Netlify!), please configure your Gemini API Key manually:\n\n" +
-          "1. Click the **Key icon (🔑)** next to the title in the top-right of this panel.\n" +
-          "2. Paste your **Gemini API Key** from Google AI Studio.\n\n" +
-          "This key is completely secure and will be saved in your private local browser storage only!";
+          `${errorLine}Please check and verify that your Gemini API Key is configured and valid:\n\n` +
+          "1. **In AI Studio (Best for Preview):** Click the Settings gear icon at the top right of the screen, open **Secrets**, and verify your `ONLY_API_KEY`, `CALC_API_KEY`, or `GEMINI_API_KEY` is set and hasn't expired.\n" +
+          "2. **Or configure locally (Best for Static Host):** Click the **Key icon (🔑)** at the top-right of this panel and paste your Gemini API Key. It will be stored securely in your browser's private local state.";
         setChatMessages((prev) => [...prev, { role: "bot", content: msgContent }]);
       }
     } finally {
@@ -518,33 +689,24 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
       <div className="fixed inset-y-0 right-0 w-full sm:w-[460px] bg-ink border-l border-white/10 z-[5000] flex flex-col shadow-[0_0_50px_rgba(0,0,0,0.85)] select-none">
         
         {/* HEADER BAR */}
-        <div className="bg-ink2 border-b border-white/5 px-5 py-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-accent-custom animate-pulse" />
-            <span className="font-syne text-[11.5px] font-extrabold text-white tracking-[1.5px] uppercase">
-              ACTIVE CO-PILOT LAYER
+        <div className="bg-ink2 border-b border-white/5 px-4 py-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <button 
+              onClick={onClose}
+              className="p-1.5 px-2.5 hover:bg-white/5 active:bg-white/10 rounded-lg text-dim-custom hover:text-white transition-all duration-200 cursor-pointer flex items-center gap-2 group-hover:translate-x-[-2px]"
+              title="Back to Calculator"
+              id="chat-back-btn"
+            >
+              <ArrowLeft size={16} className="text-accent-custom group-hover:text-white transition-colors" />
+              <span className="text-[12px] font-sans tracking-wide font-semibold text-slate-300 group-hover:text-white">Back</span>
+            </button>
+            <div className="h-4 w-[1px] bg-white/10 mx-1" />
+            <span className="font-syne text-[12px] font-extrabold text-white tracking-[2px] uppercase">
+              ONLYCALC AI
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowKeyConfig(!showKeyConfig)}
-              className={`p-1.5 px-2 rounded-lg border transition-all cursor-pointer text-xs flex items-center gap-1 ${
-                showKeyConfig || localApiKey || (import.meta as any).env?.VITE_CALC_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY
-                  ? "border-[#D97706]/35 text-[#D97706] bg-[#D97706]/5 hover:bg-[#D97706]/10"
-                  : "border-transparent text-dim-custom hover:text-white"
-              }`}
-              title="Configure API Key (For Netlify & static client)"
-            >
-              <Key size={12} />
-              <span className="text-[9px] font-mono leading-none max-sm:hidden font-bold">KEY</span>
-            </button>
-            <button 
-              onClick={onClose}
-              className="p-1 px-2 hover:bg-white/5 rounded-lg text-dim-custom hover:text-white transition-all cursor-pointer font-mono text-xs scale-90"
-              title="Dismiss Solver"
-            >
-              <X size={14} />
-            </button>
+            {/* Pristine clean right sidebar section */}
           </div>
         </div>
 
@@ -619,7 +781,7 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
                 </button>
               )}
             </div>
-            {((import.meta as any).env?.VITE_CALC_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY) && (
+            {((import.meta as any).env?.VITE_ONLY_API_KEY || (import.meta as any).env?.VITE_CALC_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY) && (
               <div className="text-[9.5px] text-[#10B981] font-mono flex items-center gap-1 bg-[#10B981]/5 border border-[#10B981]/15 p-1 px-2 rounded-lg">
                 <span className="w-1.1 h-1.1 rounded-full bg-[#10B981]" />
                 Detected API key preset via static Environment Variables!
@@ -643,81 +805,27 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
         <div className="flex-grow flex flex-col overflow-hidden relative">
           <div className="flex-grow overflow-y-auto px-5 py-4 space-y-4">
             
-            {/* SUGGESTION INTRO DECALS (Only if list is blank) */}
+            {/* MINIMALIST BLANK CHAT PLACEHOLDER */}
             {chatMessages.length === 0 && (
-              <div className="py-2 text-center space-y-3.5">
-                <div className="mx-auto w-9.5 h-9.5 rounded-xl bg-accent-custom/5 border border-accent-custom/20 flex items-center justify-center text-accent-custom animate-pulse">
-                  <Sparkles size={14} />
+              <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-5 my-auto select-none animate-fade-in py-16">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-ink3 to-ink2 border border-white/10 overflow-hidden flex items-center justify-center shadow-2xl transition-transform duration-300 hover:scale-105 active:scale-95">
+                  <img 
+                    src="https://lh3.googleusercontent.com/d/1zqY7YEbx1vc5h8wVEqSCZO01_Ql-f5aJ" 
+                    alt="ONLYCALC AI icon"
+                    className="w-11 h-11 object-contain rounded-xl"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=60";
+                    }}
+                  />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="font-syne text-[12.5px] font-bold text-white tracking-[1px] uppercase">
-                    Choose Your Intelligent Solver
+                  <h3 className="font-syne text-[14px] font-extrabold text-white tracking-[2px] uppercase bg-gradient-to-r from-accent-custom to-accent2-custom bg-clip-text text-transparent">
+                    ONLYCALC AI
                   </h3>
-                  <p className="text-dim-custom text-[10.5px] leading-relaxed max-w-[340px] mx-auto font-sans">
-                    Ask advanced calculus solutions, financial worksheets, interest grids, or conversion tables and route solved values straight to the calculator workspace.
+                  <p className="text-dim-custom text-[11px] max-w-[280px] leading-relaxed mx-auto">
+                    Type a math, calculus, accounting, or general knowledge question below. Solved values can be sent directly to your calculator!
                   </p>
-                </div>
-
-                {/* Calculator integration chip */}
-                {currExpr && (
-                  <button
-                    onClick={() => {
-                      setChatInput(`Analyze and evaluate this expression step-by-step: ${currExpr}`);
-                    }}
-                    className="mx-auto flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-green-custom/10 hover:bg-green-custom/15 border border-green-custom/20 text-green-custom text-[10px] font-mono transition-all cursor-pointer select-none active:scale-95"
-                  >
-                    <span className="font-bold">✦ LOAD ACTIVE CALC EXPR:</span>
-                    <span className="bg-ink3 px-1 rounded border border-white/5 font-semibold text-white">
-                      {formatDisplayLabel(currExpr)}
-                    </span>
-                  </button>
-                )}
-
-                {/* Formula integration chip */}
-                {customFormulas.length > 0 && (
-                  <div className="pt-1.5">
-                    <span className="block text-[7.5px] tracking-[1.5px] text-dim-custom uppercase mb-1.5 font-mono">
-                      LOAD CONFIGURED BANK
-                    </span>
-                    <div className="flex flex-wrap gap-1 justify-center max-w-[380px] mx-auto">
-                      {customFormulas.slice(0, 4).map((frm) => (
-                        <button
-                          key={frm.n}
-                          onClick={() => {
-                            setChatInput(`Explain or solve the formula ${frm.n} = ${frm.e}`);
-                          }}
-                          className="px-2 py-0.5 rounded bg-yellow-custom/5 hover:bg-yellow-custom/10 border border-yellow-custom/25 text-yellow-custom text-[9.5px] font-mono transition-all cursor-pointer"
-                        >
-                          {frm.n}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="pt-3 border-t border-white/5">
-                  <span className="block text-[7.5px] tracking-[1.5px] text-dim-custom uppercase mb-1.5 font-mono">
-                    SAMPLE CO-PILOT ASSIGNMENTS
-                  </span>
-                  <div className="flex flex-col gap-1 max-w-[360px] mx-auto text-left">
-                    {[
-                      { q: "Calculate Monthly Mortgage Interest on 500k at 4.5% for 30yr", tag: "FINANCIAL ACCOUNTING" },
-                      { q: "Solve step-by-step: 3x² + 12x - 15 = 0", tag: "ALGEBRA PRO" },
-                      { q: "Derive standard deviation of list [10, 15, 20, 25, 30]", tag: "STATISTICS ANALYSIS" },
-                      { q: "Convert 85 miles per hour to meters per second", tag: "PHYSICAL UNIT CONVERSIONS" }
-                    ].map((chip) => (
-                      <button
-                        key={chip.q}
-                        className="bg-ink3 border border-white/5 hover:border-accent-custom/50 hover:text-white text-dim-custom text-[10px] p-2 rounded-lg cursor-pointer transition-all font-mono flex justify-between items-center group text-left"
-                        onClick={() => handleSendAi(chip.q)}
-                      >
-                        <span className="group-hover:translate-x-0.5 transition-transform truncate pr-2">{chip.q}</span>
-                        <span className="text-[7.5px] text-accent-custom border border-accent-custom/20 bg-accent-custom/5 px-1 py-0.2 rounded shrink-0 whitespace-nowrap">
-                          {chip.tag}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
                 </div>
               </div>
             )}
@@ -733,13 +841,25 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
                     className={`flex gap-2.5 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
                   >
                     <div
-                      className={`w-6.5 h-6.5 rounded-lg flex items-center justify-center font-mono text-[11px] flex-shrink-0 border ${
+                      className={`w-7.5 h-7.5 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden border ${
                         isBot
-                          ? "bg-gradient-to-br from-accent-custom/20 to-accent2-custom/20 border-accent-custom/30 text-accent-custom"
+                          ? "border-accent-custom/30 bg-ink"
                           : "bg-green-custom/10 border-green-custom/20 text-green-custom animate-bounce-in"
                       }`}
                     >
-                      {isBot ? "✦" : "✎"}
+                      {isBot ? (
+                        <img 
+                          src="https://lh3.googleusercontent.com/d/1zqY7YEbx1vc5h8wVEqSCZO01_Ql-f5aJ" 
+                          alt="ONLYCALC Bot avatar"
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=60";
+                          }}
+                        />
+                      ) : (
+                        <span className="font-mono text-[11px]">✎</span>
+                      )}
                     </div>
                     <div
                       className={`max-w-[85%] px-3.5 py-2.5 rounded-xl text-[11px] leading-relaxed border flex flex-col justify-between ${
@@ -779,8 +899,16 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
               {/* LOADING THINKING DOTS */}
               {isAiLoading && (
                 <div className="flex gap-2.5">
-                  <div className="w-6.5 h-6.5 rounded-lg flex items-center justify-center bg-gradient-to-br from-accent-custom/20 to-accent2-custom/20 border border-accent-custom/30 text-accent-custom font-mono text-xs">
-                    ✦
+                  <div className="w-7.5 h-7.5 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0 border border-accent-custom/30 bg-ink">
+                    <img 
+                      src="https://lh3.googleusercontent.com/d/1zqY7YEbx1vc5h8wVEqSCZO01_Ql-f5aJ" 
+                      alt="ONLYCALC Bot avatar"
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=60";
+                      }}
+                    />
                   </div>
                   <div className="flex items-center gap-1.5 px-3 py-2 bg-ink2 border border-white/5 rounded-xl rounded-tl-none shadow-sm">
                     <span className="w-1.2 h-1.2 rounded-full bg-accent-custom animate-bounce" style={{ animationDelay: "0s" }} />
