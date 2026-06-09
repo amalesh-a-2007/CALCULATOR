@@ -11,6 +11,7 @@ export interface Formula {
 export interface HistoryItem {
   e: string; // mathematical/printable expression
   r: string | number; // evaluated result
+  t?: string; // timestamp
 }
 
 export type CalcMode = "standard" | "scientific" | "account";

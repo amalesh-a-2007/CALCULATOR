@@ -44,6 +44,24 @@ const displayFormatter = (expr: string): string => {
     .replace(/\//g, "÷");
 };
 
+const solveNaturalLanguage = (text: string): { expression: string, result: number | string } | null => {
+  const t = text.toLowerCase().trim();
+  
+  let m = t.match(/(?:what is\s*)?([\d\.]+)\s*%\s*of\s*([\d\.]+)/);
+  if (m) return { expression: `${m[1]}% of ${m[2]}`, result: (parseFloat(m[1])/100) * parseFloat(m[2]) };
+  
+  m = t.match(/simple interest\s*on\s*([\d\.]+)\s*at\s*([\d\.]+)\s*%\s*for\s*([\d\.]+)\s*years?/);
+  if (m) return { expression: `SI on ${m[1]} at ${m[2]}% for ${m[3]}y`, result: (parseFloat(m[1]) * parseFloat(m[2]) * parseFloat(m[3])) / 100 };
+
+  m = t.match(/compound interest\s*on\s*([\d\.]+)\s*at\s*([\d\.]+)\s*%\s*for\s*([\d\.]+)\s*years?/);
+  if (m) return { expression: `CI on ${m[1]} at ${m[2]}% for ${m[3]}y`, result: parseFloat(m[1]) * Math.pow(1 + parseFloat(m[2])/100, parseFloat(m[3])) - parseFloat(m[1]) };
+
+  m = t.match(/area of (?:a )?circle\s*(?:with )?(?:radius )?([\d\.]+)/);
+  if (m) return { expression: `Area of circle r=${m[1]}`, result: Math.PI * Math.pow(parseFloat(m[1]), 2) };
+  
+  return null;
+};
+
 const evaluateSafe = (expression: string): number => {
   if (!expression) return 0;
 
@@ -117,6 +135,7 @@ export default function App() {
   const [mainResult, setMainResult] = useState<string>("0");
   const [isError, setIsError] = useState<boolean>(false);
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
+  const [currency, setCurrency] = useState<string>("₹");
   
   // Memory, Mode, Active Panel, custom formulas list and history stack
   const [memory, setMemory] = useState<number | null>(null);
@@ -235,17 +254,29 @@ export default function App() {
   const handleEvaluate = () => {
     if (!expr) return;
     try {
-      const evaluationResult = evaluateSafe(expr);
+      const naturalResult = solveNaturalLanguage(expr);
+      let evaluationResult: number;
+      let displayExpr: string;
+
+      if (naturalResult !== null) {
+        evaluationResult = Number(naturalResult.result);
+        displayExpr = naturalResult.expression;
+      } else {
+        evaluationResult = evaluateSafe(expr);
+        displayExpr = displayFormatter(expr);
+      }
+
       const roundedResult = Number.isFinite(evaluationResult) 
         ? +(evaluationResult.toFixed(10)) 
         : evaluationResult;
       
       const newHistoryItem: HistoryItem = {
-        e: displayFormatter(expr),
+        e: displayExpr,
         r: roundedResult,
+        t: new Date().toLocaleTimeString()
       };
 
-      setPrevExprString(displayFormatter(expr) + " =");
+      setPrevExprString(displayExpr + " =");
       setHistory((prev) => [newHistoryItem, ...prev]);
       setMainResult(String(roundedResult));
       setIsEvaluating(true);
@@ -429,8 +460,9 @@ export default function App() {
 
   const handleAccountingModalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const inputVal = parseFloat(accountingValue.trim());
-    if (isNaN(inputVal)) return;
+    const inputs = accountingValue.split(",").map(v => parseFloat(v.trim())).filter(n => !isNaN(n));
+    if (inputs.length === 0) return;
+    const inputVal = inputs[0];
 
     try {
       const currentVal = evaluateSafe(expr || "0");
@@ -451,6 +483,32 @@ export default function App() {
         case "markup":
           // Markup Percent over Base Cost
           resultVal = String(+(((currentVal - inputVal) / inputVal) * 100).toFixed(4));
+          break;
+        case "emi":
+          if (inputs.length === 3) {
+            const [p, r, t] = inputs;
+            const monthlyRate = r / 12 / 100;
+            const emi = (p * monthlyRate * Math.pow(1 + monthlyRate, t)) / (Math.pow(1 + monthlyRate, t) - 1);
+            resultVal = String(+emi.toFixed(4));
+          } else { throw new Error("Need P, R, T"); }
+          break;
+        case "simple_interest":
+          if (inputs.length === 3) {
+            const [p, r, t] = inputs;
+            resultVal = String(+((p * r * t) / 100).toFixed(4));
+          } else { throw new Error("Need P, R, T"); }
+          break;
+        case "compound_interest":
+          if (inputs.length === 3) {
+            const [p, r, t] = inputs;
+            resultVal = String(+(p * Math.pow(1 + r / 100, t) - p).toFixed(4));
+          } else { throw new Error("Need P, R, T"); }
+          break;
+        case "gst":
+          if (inputs.length === 2) {
+             const [base, rate] = inputs;
+             resultVal = String(+(base + base * (rate/100)).toFixed(4));
+          } else { throw new Error("Need Base, Rate"); }
           break;
         default:
           break;
@@ -577,7 +635,7 @@ export default function App() {
                 } ${isEvaluating ? "animate-bounce-in" : ""}`}
                 id="display-main-screen"
               >
-                {isError ? "SYNTAX ERROR" : mainResult}
+                {isError ? "SYNTAX ERROR" : mode === 'account' ? `${currency}${mainResult}` : mainResult}
               </div>
 
               {/* METADATA STATS DECALS & INDICATORS */}
@@ -952,27 +1010,32 @@ export default function App() {
 
             {/* ACCOUNTING EXTRAS OPTIONS (VISIBLE UNTIL CALCMODE SWITCH AWAY) */}
             {mode === "account" && (
-              <div className="bg-ink2 border border-border-custom rounded-xl p-3.5 space-y-2 animate-bounce-in select-none">
-                <div className="text-[9px] text-dim-custom tracking-widest uppercase font-semibold font-mono pl-1">
-                  ACCOUNTING EXTRACT OPERATIONS
+              <div className="bg-ink2 border border-border-custom rounded-xl p-3.5 space-y-3 animate-bounce-in select-none">
+                <div className="flex justify-between items-center px-1">
+                  <div className="text-[9px] text-dim-custom tracking-widest uppercase font-semibold font-mono">
+                    ACCOUNTING EXTRACT OPERATIONS
+                  </div>
+                  <select 
+                    className="bg-ink3 border border-border-custom text-white text-[10px] py-1 px-2 rounded outline-none font-mono cursor-pointer"
+                    value={currency}
+                    onChange={(e) => setCurrency(e.target.value)}
+                  >
+                    <option value="₹">₹ (INR)</option>
+                    <option value="$">$ (USD)</option>
+                    <option value="€">€ (EUR)</option>
+                    <option value="£">£ (GBP)</option>
+                  </select>
                 </div>
-                <div className="grid grid-cols-4 gap-1.5 font-mono">
-                  {/* GST CALCS */}
-                  <button className="calc-btn text-[10px] text-green-custom hover:border-green-custom border border-border-custom py-2 rounded-md hover:bg-green-custom/5" onClick={() => handleApplyGst(5)}>GST 5%</button>
-                  <button className="calc-btn text-[10px] text-green-custom hover:border-green-custom border border-border-custom py-2 rounded-md hover:bg-green-custom/5" onClick={() => handleApplyGst(12)}>GST 12%</button>
-                  <button className="calc-btn text-[10px] text-green-custom hover:border-green-custom border border-border-custom py-2 rounded-md hover:bg-green-custom/5" onClick={() => handleApplyGst(18)}>GST 18%</button>
-                  <button className="calc-btn text-[10px] text-green-custom hover:border-green-custom border border-border-custom py-2 rounded-md hover:bg-green-custom/5" onClick={() => handleApplyGst(28)}>GST 28%</button>
-                  
-                  {/* POPUPS/PROMPT ACTIONS REPLACED WITH SECURE MODALS */}
-                  <button className="calc-btn text-[10.5px] text-green-custom hover:border-green-custom border border-border-custom py-2 rounded-md hover:bg-green-custom/5" onClick={() => { setAccountingAction("discount"); setAccountingValue(""); }}>DISCOUNT</button>
-                  <button className="calc-btn text-[10.5px] text-green-custom hover:border-green-custom border border-border-custom py-2 rounded-md hover:bg-green-custom/5" onClick={() => { setAccountingAction("profit"); setAccountingValue(""); }}>PROFIT %</button>
-                  <button className="calc-btn text-[10.5px] text-green-custom hover:border-green-custom border border-border-custom py-2 rounded-md hover:bg-green-custom/5" onClick={() => { setAccountingAction("loss"); setAccountingValue(""); }}>LOSS %</button>
-                  <button className="calc-btn text-[10.5px] text-green-custom hover:border-green-custom border border-border-custom py-2 rounded-md hover:bg-green-custom/5" onClick={() => { setAccountingAction("markup"); setAccountingValue(""); }}>MARKUP %</button>
-
-                  <button className="calc-btn text-[10.5px] text-green-custom hover:border-green-custom border border-border-custom py-2 rounded-md hover:bg-green-custom/5" onClick={() => handleInsertCharacter("*1.18")}>+18%</button>
-                  <button className="calc-btn text-[10.5px] text-green-custom hover:border-green-custom border border-border-custom py-2 rounded-md hover:bg-green-custom/5" onClick={() => handleInsertCharacter("*0.82")}>&minus;18%</button>
-                  <button className="calc-btn text-[10.5px] text-green-custom hover:border-green-custom border border-border-custom py-2 rounded-md hover:bg-green-custom/5" onClick={() => handleInsertCharacter("*1.28")}>+28%</button>
-                  <button className="calc-btn text-[10.5px] text-green-custom hover:border-green-custom border border-border-custom py-2 rounded-md hover:bg-green-custom/5" onClick={() => handleInsertCharacter("*0.72")}>&minus;28%</button>
+                
+                <div className="grid grid-cols-2 gap-2 font-mono">
+                  <button className="calc-btn text-[10px] text-green-custom hover:border-green-custom border border-border-custom py-2.5 rounded-md hover:bg-green-custom/5" onClick={() => { setAccountingAction("emi"); setAccountingValue(""); }}>EMI CALCULATOR</button>
+                  <button className="calc-btn text-[10px] text-green-custom hover:border-green-custom border border-border-custom py-2.5 rounded-md hover:bg-green-custom/5" onClick={() => { setAccountingAction("simple_interest"); setAccountingValue(""); }}>SIMPLE INTEREST</button>
+                  <button className="calc-btn text-[10px] text-green-custom hover:border-green-custom border border-border-custom py-2.5 rounded-md hover:bg-green-custom/5" onClick={() => { setAccountingAction("compound_interest"); setAccountingValue(""); }}>COMPOUND INTEREST</button>
+                  <button className="calc-btn text-[10px] text-green-custom hover:border-green-custom border border-border-custom py-2.5 rounded-md hover:bg-green-custom/5" onClick={() => { setAccountingAction("discount"); setAccountingValue(""); }}>DISCOUNT</button>
+                  <button className="calc-btn text-[10px] text-green-custom hover:border-green-custom border border-border-custom py-2.5 rounded-md hover:bg-green-custom/5" onClick={() => { setAccountingAction("profit"); setAccountingValue(""); }}>PROFIT MARGIN</button>
+                  <button className="calc-btn text-[10px] text-green-custom hover:border-green-custom border border-border-custom py-2.5 rounded-md hover:bg-green-custom/5" onClick={() => { setAccountingAction("loss"); setAccountingValue(""); }}>LOSS MARGIN</button>
+                  <button className="calc-btn text-[10px] text-green-custom hover:border-green-custom border border-border-custom py-2.5 rounded-md hover:bg-green-custom/5" onClick={() => { setAccountingAction("markup"); setAccountingValue(""); }}>MARKUP</button>
+                  <button className="calc-btn text-[10px] text-green-custom hover:border-green-custom border border-border-custom py-2.5 rounded-md hover:bg-green-custom/5" onClick={() => { setAccountingAction("gst"); setAccountingValue(""); }}>GST (CUSTOM %)</button>
                 </div>
               </div>
             )}
@@ -1003,8 +1066,11 @@ export default function App() {
                   <div className="text-[10px] text-dim-custom mb-1 font-mono tracking-tighter truncate">
                     {h.e}
                   </div>
-                  <div className="text-[15px] text-white font-semibold font-mono tracking-tight break-all">
-                    {h.r}
+                  <div className="flex justify-between items-end gap-2">
+                    <span className="text-[8px] text-dim-custom/50 font-mono select-none">{h.t}</span>
+                    <span className="text-[15px] text-white font-semibold font-mono tracking-tight break-all">
+                      {h.r}
+                    </span>
                   </div>
                 </div>
               ))}
@@ -1028,16 +1094,25 @@ export default function App() {
             <form onSubmit={handleAccountingModalSubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <span className="block text-[9px] tracking-widest text-dim-custom uppercase font-semibold">
-                  {accountingAction === "discount" ? "ENTER DISCOUNT PERCENTAGE" : "ENTER COST PRICE"}
+                  {accountingAction === "discount" ? "ENTER DISCOUNT PERCENTAGE" :
+                   accountingAction === "emi" ? "ENTER LOAN AMOUNT, RATE %, MONTHS (comma-separated)" :
+                   accountingAction === "simple_interest" || accountingAction === "compound_interest" ? "ENTER PRINCIPAL, RATE %, YEARS (comma-separated)" :
+                   accountingAction === "gst" ? "ENTER BASE AMOUNT, GST % (comma-separated)" :
+                   "ENTER COST PRICE"}
                 </span>
                 <input
                   id="acc-modal-numeric-input"
-                  type="number"
-                  step="any"
+                  type="text"
                   autoFocus
                   required
                   className="w-full bg-ink3 border border-border-custom text-white font-mono text-[14px] px-3.5 py-2.5 rounded-lg focus:outline-none focus:border-accent-custom/50 focus:ring-1 focus:ring-accent-custom/15 transition-all"
-                  placeholder={accountingAction === "discount" ? "e.g. 15 for 15%" : "e.g. 120.50"}
+                  placeholder={
+                    accountingAction === "discount" ? "e.g. 15 for 15%" :
+                    accountingAction === "emi" ? "e.g. 100000, 8.5, 36" :
+                    accountingAction === "simple_interest" || accountingAction === "compound_interest" ? "e.g. 50000, 5, 2" :
+                    accountingAction === "gst" ? "e.g. 1000, 18" :
+                    "e.g. 120.50"
+                  }
                   value={accountingValue}
                   onChange={(e) => setAccountingValue(e.target.value)}
                 />

@@ -206,7 +206,16 @@ NEVER DO THIS
           "5. CRITICAL: Conclude with the final calculated numerical value or expression on its own line at the absolute bottom inside: [RESULT: 4.12]. Only the raw expression inside.";
       }
 
-      const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"];
+      const modelsToTry = [
+        "gemini-2.5-flash", 
+        "gemini-2.5-pro", 
+        "gemini-2.0-flash", 
+        "gemini-2.0-pro-exp", 
+        "gemini-1.5-pro", 
+        "gemini-1.5-flash-8b", 
+        "gemini-1.5-flash-latest", 
+        "gemini-flash-latest"
+      ];
       let responseStream = null;
       let lastError = null;
 
