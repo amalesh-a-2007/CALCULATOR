@@ -214,11 +214,11 @@ const cleanApiErrorMessage = (err: any): string => {
     }
   } catch {}
 
+  if (msg.includes("429") || msg.includes("503") || msg.includes("quota") || msg.includes("Too Many Requests") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("UNAVAILABLE") || msg.includes("high demand") || msg.includes("temporarily offline")) {
+    return "Server busy please try again later.";
+  }
   if (msg.includes("API key expired") || msg.includes("API_KEY_INVALID") || msg.includes("API key not valid") || msg.includes("Invalid API Key")) {
     return "Your API Key is invalid or expired. Please check and update 'ONLY_API_KEY', 'CALC_API_KEY', or 'GEMINI_API_KEY' inside the Secrets Panel (the Settings gear icon at the top right of the screen) with a valid key.";
-  }
-  if (msg.includes("UNAVAILABLE") || msg.includes("high demand") || msg.includes("503")) {
-    return "The Gemini service is temporarily offline or experiencing high demand. Please try again in a few seconds.";
   }
   return msg;
 };
@@ -266,178 +266,8 @@ export const WorkoutSpace: React.FC<WorkoutSpaceProps> = ({
   const handleSendAi = async (text: string) => {
     if (!text.trim() || isAiLoading) return;
     
-    const userMsg: Message = { role: "user", content: text.trim() };
-    const updatedMsgs = [...chatMessages, userMsg];
-    
-    setChatMessages(updatedMsgs);
+    setToastMessage("Server is busy please try again later.");
     setChatInput("");
-    setIsAiLoading(true);
-
-    let serverSuccess = false;
-    let backendErrorMsg = "";
-
-    // 1. Try server-side first
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ messages: updatedMsgs, modelId: activeModel }),
-      });
-
-      // Checking content-type ensures we do not treat Netlify's full static HTML 404/fallback page as standard JSON
-      const contentType = response.headers.get("content-type");
-      if (response.ok && response.body && contentType && !contentType.includes("html")) {
-        setChatMessages((prev) => [...prev, { role: "bot", content: "" }]);
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder("utf-8");
-        let currentText = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunkStr = decoder.decode(value, { stream: true });
-          currentText += chunkStr;
-
-          setChatMessages((prev) => {
-            const updated = [...prev];
-            if (updated.length > 0 && updated[updated.length - 1].role === "bot") {
-              updated[updated.length - 1].content = currentText;
-            }
-            return updated;
-          });
-        }
-        serverSuccess = true;
-      } else if (!response.ok && contentType && contentType.includes("application/json")) {
-        try {
-          const errData = await response.json();
-          if (errData?.error) {
-            backendErrorMsg = errData.error;
-          }
-        } catch {}
-      }
-    } catch (err: any) {
-      console.warn("Express server endpoint is offline, checking for client-side API Key fallback...", err);
-      if (err?.message) {
-        backendErrorMsg = err.message;
-      }
-    }
-
-    if (serverSuccess) {
-      setIsAiLoading(false);
-      return;
-    }
-
-    // 2. Client-side fallback (ideal for Netlify static host)
-    try {
-      const resolvedKey = localApiKey || (import.meta as any).env?.VITE_ONLY_API_KEY || (import.meta as any).env?.VITE_CALC_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
-      if (!resolvedKey) {
-        throw new Error("No client-side API key configure.");
-      }
-
-      const ai = new GoogleGenAI({
-        apiKey: resolvedKey,
-        httpOptions: {
-          headers: {
-            "User-Agent": "aistudio-build",
-          },
-        },
-      });
-
-      const formattedContents = updatedMsgs.map((m) => {
-        const role = m.role === "user" ? "user" : "model";
-        return {
-          role,
-          parts: [{ text: m.content || "" }],
-        };
-      });
-
-      const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"];
-      let responseStream = null;
-      let lastError = null;
-
-      for (const modelName of modelsToTry) {
-        try {
-          const clientStreamConfig: any = {
-            systemInstruction: getClientSystemInstruction(activeModel),
-            temperature: 0.2,
-          };
-
-          if (modelName.startsWith("gemini-3")) {
-            clientStreamConfig.thinkingConfig = {
-              thinkingLevel: ThinkingLevel.LOW,
-            };
-          }
-
-          responseStream = await ai.models.generateContentStream({
-            model: modelName,
-            contents: formattedContents,
-            config: clientStreamConfig,
-          });
-          console.log(`Direct client-side successfully started stream with model: ${modelName}`);
-          break;
-        } catch (err: any) {
-          console.warn(`Model ${modelName} on direct client-side stream failed. Error:`, err?.message || err);
-          lastError = err;
-        }
-      }
-
-      if (!responseStream) {
-        throw lastError || new Error("All client-side direct model attempts failed.");
-      }
-
-      setChatMessages((prev) => [...prev, { role: "bot", content: "" }]);
-
-      let currentText = "";
-      for await (const chunk of responseStream) {
-        const textChunk = chunk.text;
-        if (textChunk) {
-          currentText += textChunk;
-          setChatMessages((prev) => {
-            const updated = [...prev];
-            if (updated.length > 0 && updated[updated.length - 1].role === "bot") {
-              updated[updated.length - 1].content = currentText;
-            }
-            return updated;
-          });
-        }
-      }
-    } catch (err: any) {
-      console.error("Client fallback error:", err);
-      
-      // Local simple solver if everything else fails
-      let localSolution = "";
-      try {
-        const cleaned = text
-          .toLowerCase()
-          .replace(/\bpi\b/g, "Math.PI")
-          .replace(/\be\b/g, "Math.E")
-          .replace(/\^/g, "**")
-          .replace(/sin\(/g, "Math.sin(")
-          .replace(/cos\(/g, "Math.cos(")
-          .replace(/tan\(/g, "Math.tan(")
-          .replace(/sqrt\(/g, "Math.sqrt(");
-        const evalRes = eval(cleaned);
-        if (Number.isFinite(evalRes)) {
-          localSolution = `Here is the calculation from the offline local engine:\n\n[RESULT: ${evalRes}]`;
-        }
-      } catch {}
-
-      if (localSolution) {
-        setChatMessages((prev) => [...prev, { role: "bot", content: localSolution }]);
-      } else {
-        const primaryError = backendErrorMsg || cleanApiErrorMessage(err);
-        const errorLine = primaryError ? `⚠️ **API Error Details**:\n_${primaryError}_\n\n` : "";
-        const msgContent = 
-          `${errorLine}Please check and verify that your Gemini API Key is configured and valid:\n\n` +
-          "1. **In AI Studio (Best for Preview):** Click the Settings gear icon at the top right of the screen, open **Secrets**, and verify your `ONLY_API_KEY`, `CALC_API_KEY`, or `GEMINI_API_KEY` is set and hasn't expired.\n" +
-          "2. **Or configure locally (Best for Static Host):** Click the **Key icon (🔑)** at the top-right of this panel and paste your Gemini API Key. It will be stored securely in your browser's private local state.";
-        setChatMessages((prev) => [...prev, { role: "bot", content: msgContent }]);
-      }
-    } finally {
-      setIsAiLoading(false);
-    }
   };
 
   // Parses raw message text and converts it into custom React nodes with elite clean styling (No raw *, ` , or slashes)
