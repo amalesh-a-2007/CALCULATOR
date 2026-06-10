@@ -18,6 +18,7 @@ import { CalcMode, ActivePanel, Formula, HistoryItem } from "./types";
 import { FormulaModal } from "./components/FormulaModal";
 import { WorkoutSpace } from "./components/WorkoutSpace";
 import { gpaHtmlContent } from "./gpaContent";
+import { musicHtmlContent } from "./musicContent";
 
 // Mathematical expression text formatter to human-friendly display rendering
 const displayFormatter = (expr: string): string => {
@@ -202,6 +203,8 @@ export default function App() {
   const [mode, setMode] = useState<CalcMode>("standard");
   const [showGPA, setShowGPA] = useState<boolean>(false);
   const [activePanel, setActivePanel] = useState<ActivePanel>("main");
+  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+  const [showMusicCalc, setShowMusicCalc] = useState<boolean>(false);
   const [formulas, setFormulas] = useState<Formula[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
@@ -652,14 +655,61 @@ export default function App() {
 
   return (
     <div className="relative text-custom-text min-h-screen flex flex-col items-center">
+      {/* MUSIC CALC PAGE OVERLAY */}
+      {showMusicCalc && (
+        <div className="fixed inset-0 bg-white z-[60] flex flex-col pt-4 px-4 overflow-hidden">
+          <button
+            onClick={() => {
+              setShowMusicCalc(false);
+            }}
+            className="absolute top-5 left-5 z-[70] flex items-center justify-center w-10 h-10 rounded-full bg-white text-black hover:bg-gray-200 transition-colors cursor-pointer shadow-xl border border-gray-300"
+            title="Back to Calculator"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          </button>
+          <div className="w-full h-full relative">
+            <iframe srcDoc={musicHtmlContent} className="w-full h-full border-0 rounded-2xl shadow-xl" title="Music Calculator" />
+          </div>
+        </div>
+      )}
+
+      {/* SLIDE DOWN MENU OVERLAY */}
+      <div 
+        className={`fixed top-0 left-0 right-0 bg-white z-[50] transition-transform duration-500 ease-in-out border-b border-gray-200 shadow-2xl flex items-center justify-center ${isMenuOpen ? "translate-y-0" : "-translate-y-full"}`}
+        style={{ height: "50vh" }}
+      >
+        <button
+          onClick={() => {
+            setIsMenuOpen(false);
+            setShowMusicCalc(true);
+          }}
+          className="px-8 py-4 bg-black text-white font-syne font-bold text-xl rounded-2xl hover:bg-gray-800 transition-colors shadow-lg"
+        >
+          MUSIC CALC
+        </button>
+        <button
+          onClick={() => setIsMenuOpen(false)}
+          className="absolute top-6 right-6 flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors text-black"
+          title="Close Menu"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
       {/* HEADER SECTION */}
       <header className="w-full max-w-[960px] px-6 py-3.5 flex items-center justify-between relative z-10 select-none">
         <div>
           <div className="font-syne text-[18px] font-extrabold tracking-[4px] bg-gradient-to-r from-accent-custom via-accent2-custom to-green-custom bg-clip-text text-transparent animate-shimmer">
             ONLY CALCULATOR
           </div>
-          <div className="text-[8px] text-dim-custom tracking-[3px] mt-0.5 uppercase font-bold">
-            PRECISION &middot; POWER &middot; SIMPLICITY
+          <div className="text-[8px] text-dim-custom tracking-[3px] mt-0.5 uppercase flex items-center gap-2">
+            <button 
+              onClick={() => setIsMenuOpen(!isMenuOpen)} 
+              className="bg-accent-custom/20 text-accent-custom px-2 py-0.5 rounded border border-accent-custom/40 hover:bg-accent-custom/30 hover:border-accent-custom/60 transition-colors cursor-pointer outline-none font-black text-[10px] shadow-[0_0_8px_rgba(79,142,255,0.2)]"
+            >
+              MENU
+            </button> 
+            <span className="font-bold">&middot; POWER &middot; SIMPLICITY</span>
           </div>
         </div>
         <button
